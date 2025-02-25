@@ -1,0 +1,1630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FPS Aim Trainer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #151515;
+            font-family: Arial, sans-serif;
+            color: white;
+        }
+        
+        body.in-game {
+            cursor: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Game view and world */
+        #game-view {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            perspective: 1000px;
+            background: linear-gradient(to bottom, #555 0%, #777 100%); /* Match wall background */
+        }
+
+        #world {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            transform-style: preserve-3d;
+            transform-origin: 50% 50%;
+            transition: transform 0.01s linear; /* Slight smoothing */
+        }
+
+        #wall {
+            position: absolute;
+            width: 4000px;
+            height: 2400px;
+            background: linear-gradient(to bottom, #555 0%, #777 100%);
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%) translateZ(-3500px);
+            border: none; /* No border for seamless look */
+        }
+
+        .target {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #ffff00 0%, #ffff00 70%, #ffd700 70%, #ffd700 100%);
+            box-shadow: 0 0 10px 2px rgba(255, 255, 0, 0.5);
+            z-index: 5;
+        }
+
+        #crosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 8px;
+            height: 8px;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        #crosshair::before,
+        #crosshair::after {
+            content: "";
+            position: absolute;
+            background-color: white;
+        }
+
+        #crosshair::before {
+            width: 2px;
+            height: 8px;
+            left: 3px;
+            top: 0;
+        }
+
+        #crosshair::after {
+            width: 8px;
+            height: 2px;
+            left: 0;
+            top: 3px;
+        }
+
+        .hit-effect {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 0, 0.8);
+            animation: hitExpand 0.3s forwards;
+            pointer-events: none;
+            z-index: 200;
+        }
+
+        @keyframes hitExpand {
+            0% {
+                transform: scale(0.5);
+                opacity: 1;
+            }
+            100% {
+                transform: scale(2);
+                opacity: 0;
+            }
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 18px;
+            z-index: 100;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+            pointer-events: none;
+        }
+
+        #score, #timer, #accuracy {
+            margin-bottom: 10px;
+        }
+
+        #task-type {
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #ffcc00;
+        }
+
+        /* Home Screen Styles */
+        #home-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #151515;
+            color: white;
+            z-index: 200;
+            overflow-y: auto;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .home-container {
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 48px;
+            margin-bottom: 10px;
+            color: #ffcc00;
+            text-transform: uppercase;
+        }
+
+        .header p {
+            font-size: 18px;
+            color: #ccc;
+        }
+
+        .main-content {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            justify-content: center;
+            margin-bottom: 40px;
+        }
+
+        .instructions {
+            flex: 1;
+            min-width: 300px;
+            max-width: 500px;
+            background-color: #222;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .instructions h2 {
+            color: #ffcc00;
+            margin-top: 0;
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+        }
+
+        .instructions li {
+            margin-bottom: 12px;
+        }
+
+        .mode-selection {
+            flex: 1;
+            min-width: 300px;
+            max-width: 600px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .task-cards-container {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            max-width: 500px;
+            gap: 16px;
+        }
+
+        .task-card {
+            width: 100%;
+            height: auto;
+            padding: 16px 24px;
+            background-color: #333;
+            border-radius: 8px;
+            text-align: left;
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+            margin-bottom: 16px;
+        }
+
+        .task-card:hover {
+            transform: translateX(8px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+            background-color: #444;
+        }
+
+        .task-card-button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: auto;
+            font-size: 14px;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+
+        .task-card-button:hover {
+            background-color: #45a049;
+            transform: translateY(-2px);
+        }
+
+        .task-card-button:active {
+            transform: translateY(1px);
+        }
+
+        .task-card h3 {
+            margin: 0;
+            color: #ffcc00;
+            min-width: 150px;
+        }
+
+        .task-card-content {
+            flex-grow: 1;
+            margin-left: 16px;
+        }
+
+        .task-card p {
+            margin: 8px 0;
+        }
+
+        .duration-badge {
+            background-color: #2a2a2a;
+            color: #ccc;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-top: 4px;
+            display: inline-block;
+        }
+
+        /* Results Section */
+        .results-section {
+            width: 100%;
+            padding: 20px;
+            background-color: #222;
+            border-radius: 10px;
+            margin-bottom: 40px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            display: none; /* Initially hidden until there are results */
+        }
+
+        .results-section h2 {
+            color: #ffcc00;
+            margin-top: 0;
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+        }
+
+        .results-content {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-around;
+            margin-top: 20px;
+        }
+
+        .result-item {
+            text-align: center;
+            margin: 10px;
+            min-width: 150px;
+        }
+
+        .result-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #ffcc00;
+        }
+
+        .result-label {
+            color: #ccc;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: auto;
+            padding: 20px;
+            color: #777;
+            font-size: 14px;
+        }
+
+        /* Game Screens */
+        #game-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            z-index: 200;
+            background: linear-gradient(to bottom, #555 0%, #777 100%); /* Match wall background */
+        }
+
+        #end-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            z-index: 200;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+        }
+
+        #end-screen h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #ffcc00;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 18px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            background-color: #4CAF50;
+            color: white;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+
+        /* Grid pattern for mode 3 */
+        .grid-point {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        /* Sensitivity Settings Section */
+        .sensitivity-settings {
+            background-color: #222;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            min-width: 300px;
+            width: 300px; /* Fixed width */
+            max-width: 300px; /* Maximum width constraint */
+            margin-bottom: 20px;
+            box-sizing: border-box; /* Include padding in width calculation */
+        }
+
+        .sensitivity-settings h3 {
+            color: #ffcc00;
+            margin-top: 0;
+            margin-bottom: 16px;
+            font-size: 20px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+        }
+
+        .sens-setting-group {
+            margin-bottom: 16px;
+            width: 100%; /* Ensure full width of container */
+        }
+
+        .sens-setting-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #ccc;
+            font-size: 16px;
+        }
+
+        .input-wrapper {
+            position: relative;
+            width: 100%; /* Full width of parent */
+            box-sizing: border-box; /* Include padding in width calculation */
+        }
+
+        .input-wrapper::after {
+            content: "";
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background-color: #ffcc00;
+            transition: transform 0.3s;
+            transform: scaleX(0);
+            transform-origin: bottom left;
+        }
+
+        .input-wrapper:focus-within::after {
+            transform: scaleX(1);
+        }
+
+        .sensitivity-settings input[type="number"] {
+            width: 100%; /* Full width of wrapper */
+            padding: 10px 12px;
+            background-color: #333;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            font-size: 16px;
+            transition: background-color 0.2s;
+            box-sizing: border-box; /* Include padding in width calculation */
+        }
+
+        .sensitivity-settings input[type="number"]:focus {
+            outline: none;
+            background-color: #444;
+        }
+
+        .sensitivity-settings input[type="number"]::-webkit-inner-spin-button,
+        .sensitivity-settings input[type="number"]::-webkit-outer-spin-button {
+            opacity: 0.3;
+            height: 24px;
+        }
+
+        .divider {
+            width: 100%;
+            height: 1px;
+            background-color: #333;
+            margin: 16px 0;
+        }
+
+        .sensitivity-settings button {
+            align-self: flex-start;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.2s, transform 0.1s;
+            margin-top: 8px;
+        }
+
+        .sensitivity-settings button:hover {
+            background-color: #45a049;
+            transform: translateY(-2px);
+        }
+
+        .sensitivity-settings button:active {
+            transform: translateY(1px);
+        }
+
+        /* Sensitivity info tooltip */
+        .sens-info {
+            display: inline-block;
+            margin-left: 8px;
+            color: #777;
+            font-size: 14px;
+            cursor: help;
+            position: relative;
+        }
+
+        .sens-info:hover::before {
+            content: "eDPI (effective DPI) = DPI × Sensitivity";
+            position: absolute;
+            top: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #333;
+            color: #fff;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <!-- Home Screen / Hub -->
+        <div id="home-screen">
+            <div class="decorative-circle decorative-circle-1"></div>
+            <div class="decorative-circle decorative-circle-2"></div>
+            <div class="home-container">
+                <div class="header">
+                    <h1>FPS Aim Trainer</h1>
+                    <p>Sharpen your precision with targeted training exercises</p>
+                </div>
+                
+                <div class="results-section" id="results-section">
+                    <h2>Your Recent Results</h2>
+                    <div class="results-content">
+                        <div class="result-item">
+                            <div class="result-value" id="result-score">0</div>
+                            <div class="result-label">Score</div>
+                        </div>
+                        <div class="result-item">
+                            <div class="result-value" id="result-accuracy">0%</div>
+                            <div class="result-label">Accuracy</div>
+                        </div>
+                        <div class="result-item">
+                            <div class="result-value" id="result-targets">0</div>
+                            <div class="result-label">Targets Hit</div>
+                        </div>
+                        <div class="result-item">
+                            <div class="result-value" id="result-mode">-</div>
+                            <div class="result-label">Last Mode</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="main-content">
+                    <!-- UPDATED SENSITIVITY SETTINGS SECTION -->
+                    <div class="sensitivity-settings">
+                        <h3>Mouse Sensitivity</h3>
+                        <div class="sens-setting-group">
+                            <label for="mouse-dpi">Mouse DPI</label>
+                            <div class="input-wrapper">
+                                <input type="number" id="mouse-dpi" min="100" max="32000" value="800">
+                            </div>
+                        </div>
+                        <div class="divider"></div>
+                        <div class="sens-setting-group">
+                            <label for="desired-edpi">Desired eDPI <span class="sens-info">?</span></label>
+                            <div class="input-wrapper">
+                                <input type="number" id="desired-edpi" min="100" max="20000" value="240">
+                            </div>
+                        </div>
+                        <button id="apply-sens-btn">Apply Settings</button>
+                    </div>
+                    
+                    <div class="instructions">
+                        <h2>How to Play</h2>
+                        <ol>
+                            <li><strong>Select a training mode</strong> from the options on the right.</li>
+                            <li><strong>Use your mouse</strong> to aim at targets. Each session lasts 60 seconds.</li>
+                            <li><strong>Click to shoot</strong> at the yellow targets on the wall.</li>
+                            <li><strong>Focus on accuracy</strong> - targets remain until shot.</li>
+                            <li><strong>Try different modes</strong> to train specific skills:
+                                <ul>
+                                    <li><strong>Standard:</strong> General aim practice with random targets</li>
+                                    <li><strong>Micro Adjustment:</strong> Precision practice with aligned targets</li>
+                                    <li><strong>Grid Tracking:</strong> Quick target acquisition in a structured pattern</li>
+                                    <li><strong>Moving Targets:</strong> Targets moving in unpredictable patterns</li>
+                                </ul>
+                            </li>
+                        </ol>
+                        <p><strong>Tip:</strong> For best results, use a consistent mouse sensitivity and practice regularly.</p>
+                    </div>
+                    
+                    <div class="mode-selection">
+                        <h2>Select Training Mode</h2>
+                        <div class="task-cards-container">
+                            <div class="task-card" data-task-type="standard" id="standard-task">
+                                <h3>Standard</h3>
+                                <div class="task-card-content">
+                                    <p>Targets appear randomly across the wall at varying sizes. Builds general aim skills.</p>
+                                    <span class="duration-badge">60 seconds</span>
+                                </div>
+                                <button class="task-card-button" data-task-type="standard">Start</button>
+                            </div>
+                            
+                            <div class="task-card" data-task-type="micro" id="micro-task">
+                                <h3>Micro Adjustment</h3>
+                                <div class="task-card-content">
+                                    <p>Small targets appear in an aligned formation. Improves precision and small movements.</p>
+                                    <span class="duration-badge">60 seconds</span>
+                                </div>
+                                <button class="task-card-button" data-task-type="micro">Start</button>
+                            </div>
+                            
+                            <div class="task-card" data-task-type="grid" id="grid-task">
+                                <h3>Grid Tracking</h3>
+                                <div class="task-card-content">
+                                    <p>Targets appear in a 3×3 grid pattern. Improves target acquisition and speed.</p>
+                                    <span class="duration-badge">60 seconds</span>
+                                </div>
+                                <button class="task-card-button" data-task-type="grid">Start</button>
+                            </div>
+                            
+                            <div class="task-card" data-task-type="tracking" id="tracking-task">
+                                <h3>Moving Targets</h3>
+                                <div class="task-card-content">
+                                    <p>Targets move in unpredictable arcs within a square area. Trains tracking ability and precision.</p>
+                                    <span class="duration-badge">60 seconds</span>
+                                </div>
+                                <button class="task-card-button" data-task-type="tracking">Start</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <footer>
+                    <span style="opacity: 0.8;">FPS Aim Trainer</span> | <span style="color: #ffcc00;">Train your aim</span>, level up your game
+                </footer>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="game-screen">
+            <div id="game-view">
+                <div id="world">
+                    <div id="wall"></div>
+                </div>
+            </div>
+            
+            <div id="crosshair"></div>
+            
+            <div id="ui">
+                <div id="task-type">Task: Standard</div>
+                <div id="score">Score: 0</div>
+                <div id="timer">Time: 60</div>
+                <div id="accuracy">Accuracy: 0%</div>
+            </div>
+        </div>
+        
+        <!-- End Screen -->
+        <div id="end-screen">
+            <h1>Task Complete</h1>
+            <h2 id="final-score">Score: 0</h2>
+            <h2 id="final-accuracy">Accuracy: 0%</h2>
+            <h2 id="final-targets">Targets Hit: 0</h2>
+            <button id="return-home-btn">Return to Home</button>
+        </div>
+    </div>
+
+    <script>
+        // Game variables
+        let score = 0;
+        let hits = 0;
+        let shots = 0;
+        let timeLeft = 60;
+        let gameActive = false;
+        let gameTimer;
+        let targets = [];
+        let targetSpawnTimer;
+        let rotationX = 0;
+        let rotationY = 0;
+        let sensitivity = 0.015; // Default that matches 800 DPI with 240 eDPI
+        let isPointerLocked = false;
+        let currentTaskType = 'standard';
+        let gridPoints = [];
+        let usedPositions = [];
+        let resultsHistory = [];
+
+        // DOM elements
+        const gameContainer = document.getElementById('game-container');
+        const gameView = document.getElementById('game-view');
+        const world = document.getElementById('world');
+        const wall = document.getElementById('wall');
+        const scoreElement = document.getElementById('score');
+        const timerElement = document.getElementById('timer');
+        const accuracyElement = document.getElementById('accuracy');
+        const taskTypeElement = document.getElementById('task-type');
+        const homeScreen = document.getElementById('home-screen');
+        const gameScreen = document.getElementById('game-screen');
+        const endScreen = document.getElementById('end-screen');
+        const returnHomeBtn = document.getElementById('return-home-btn');
+        const finalScoreElement = document.getElementById('final-score');
+        const finalAccuracyElement = document.getElementById('final-accuracy');
+        const finalTargetsElement = document.getElementById('final-targets');
+        const crosshair = document.getElementById('crosshair');
+        const taskCards = document.querySelectorAll('.task-card');
+        const resultsSection = document.getElementById('results-section');
+        const resultScoreElement = document.getElementById('result-score');
+        const resultAccuracyElement = document.getElementById('result-accuracy');
+        const resultTargetsElement = document.getElementById('result-targets');
+        const resultModeElement = document.getElementById('result-mode');
+        
+        // Sensitivity elements
+        const mouseDpi = document.getElementById('mouse-dpi');
+        const desiredEdpi = document.getElementById('desired-edpi');
+        const applySensBtn = document.getElementById('apply-sens-btn');
+
+        // Initialize game
+        function init() {
+            returnHomeBtn.addEventListener('click', returnToHome);
+            document.addEventListener('click', handleShot);
+            document.addEventListener('pointerlockchange', pointerLockChange);
+            document.addEventListener('mousemove', handleMouseMove);
+            
+            // Setup sensitivity controls
+            applySensBtn.addEventListener('click', applySensitivity);
+            
+            // Setup task selection - using buttons instead of clicking the cards
+            const taskButtons = document.querySelectorAll('.task-card-button');
+            taskButtons.forEach(button => {
+                button.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent event bubbling
+                    const taskType = button.dataset.taskType;
+                    if (taskType) {
+                        currentTaskType = taskType;
+                        startTask(currentTaskType);
+                    }
+                });
+            });
+            
+            // Create grid points for the grid task
+            createGridPoints();
+            
+            // Add center marker (invisible)
+            addCenterMarker();
+        }
+
+        // Apply sensitivity settings
+        function applySensitivity() {
+            const dpi = parseFloat(mouseDpi.value) || 800;
+            const edpi = parseFloat(desiredEdpi.value) || 240;
+            
+            // Calculate in-game sensitivity (eDPI = DPI × Sensitivity)
+            const calculatedSensitivity = edpi / dpi;
+            
+            // Apply to game with the correct scaling factor
+            sensitivity = calculatedSensitivity * 0.05;
+            
+            // Feedback to user with sensitivity info
+            alert(`Sensitivity applied! DPI: ${dpi}, eDPI: ${edpi}, Game Sens: ${calculatedSensitivity.toFixed(3)}`);
+        }
+
+        // Show home screen
+        function returnToHome() {
+            endScreen.style.display = 'none';
+            gameScreen.style.display = 'none';
+            homeScreen.style.display = 'flex';
+            
+            // Reset game state
+            resetGameState();
+            
+            // Display results if available
+            if (resultsHistory.length > 0) {
+                updateResultsDisplay();
+                resultsSection.style.display = 'block';
+            }
+        }
+        
+        // Update the results display in the home screen
+        function updateResultsDisplay() {
+            // Get the most recent result
+            const latestResult = resultsHistory[0];
+            
+            // Update the UI
+            resultScoreElement.textContent = latestResult.score;
+            resultAccuracyElement.textContent = latestResult.accuracy + '%';
+            resultTargetsElement.textContent = latestResult.hits;
+            resultModeElement.textContent = formatTaskName(latestResult.taskType);
+        }
+        
+        // Reset game state
+        function resetGameState() {
+            // Clear timers
+            clearInterval(gameTimer);
+            clearInterval(targetSpawnTimer);
+            
+            // Clear tracking task timers if they exist
+            if (window.directionChangeTimer) {
+                clearInterval(window.directionChangeTimer);
+                window.directionChangeTimer = null;
+            }
+            
+            if (window.movementInterval) {
+                clearInterval(window.movementInterval);
+                window.movementInterval = null;
+            }
+            
+            // Reset variables
+            score = 0;
+            hits = 0;
+            shots = 0;
+            timeLeft = 60;
+            rotationX = 0;
+            rotationY = 0;
+            gameActive = false;
+            
+            // Show cursor
+            document.body.classList.remove('in-game');
+            
+            // Exit pointer lock if active
+            if (document.pointerLockElement) {
+                document.exitPointerLock();
+            }
+            
+            // Remove all targets
+            targets.forEach(target => {
+                if (target.element && target.element.parentNode) {
+                    target.element.parentNode.removeChild(target.element);
+                }
+            });
+            targets = [];
+            
+            // Update UI
+            scoreElement.textContent = `Score: ${score}`;
+            timerElement.textContent = `Time: ${timeLeft}`;
+            accuracyElement.textContent = `Accuracy: ${calculateAccuracy()}%`;
+            updateViewRotation();
+        }
+
+        // Start a specific task
+        function startTask(taskType) {
+            console.log("Starting task:", taskType);
+            homeScreen.style.display = 'none';
+            gameScreen.style.display = 'block';
+            currentTaskType = taskType;
+            gameActive = true;
+            
+            // Reset camera position
+            rotationX = 0;
+            rotationY = 0;
+            updateViewRotation();
+            
+            // Hide cursor during gameplay
+            document.body.classList.add('in-game');
+            
+            requestPointerLock();
+            
+            // Update task type display
+            taskTypeElement.textContent = `Task: ${formatTaskName(taskType)}`;
+            
+            // Initial target spawn based on task type
+            spawnInitialTargets();
+            
+            // Start timer (60 seconds for all tasks)
+            gameTimer = setInterval(() => {
+                timeLeft--;
+                timerElement.textContent = `Time: ${timeLeft}`;
+                
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+            
+            // Start target spawning based on task type
+            startTargetSpawning();
+        }
+        
+        // Format task name for display
+        function formatTaskName(taskType) {
+            switch(taskType) {
+                case 'standard': return 'Standard';
+                case 'micro': return 'Micro Adjustment';
+                case 'grid': return 'Grid Tracking';
+                case 'tracking': return 'Moving Targets';
+                default: return 'Unknown';
+            }
+        }
+        
+        // Spawn initial targets based on task type
+        function spawnInitialTargets() {
+            // Clear any existing targets first
+            targets.forEach(target => {
+                if (target.element && target.element.parentNode) {
+                    target.element.parentNode.removeChild(target.element);
+                }
+            });
+            targets = [];
+            
+            // Reset position tracking
+            usedPositions = [];
+            window.microAdjustMode = null;
+            
+            switch(currentTaskType) {
+                case 'standard':
+                    // Spawn 5 random targets
+                    for (let i = 0; i < 5; i++) {
+                        spawnTarget();
+                    }
+                    break;
+                case 'micro':
+                    // Spawn 3 small targets in aligned formation
+                    for (let i = 0; i < 3; i++) {
+                        spawnMicroTarget();
+                    }
+                    break;
+                case 'grid':
+                    // Spawn 5 targets on grid points
+                    for (let i = 0; i < 5; i++) {
+                        spawnGridTarget();
+                    }
+                    break;
+                case 'tracking':
+                    // Spawn 3 moving targets within a square area
+                    for (let i = 0; i < 3; i++) {
+                        spawnTrackingTarget();
+                    }
+                    // Start the movement animation
+                    startTargetMovement();
+                    break;
+            }
+        }
+        
+        // Start target spawning based on task type
+        function startTargetSpawning() {
+            // We don't need interval-based spawning anymore since targets remain
+            // until hit. We'll just make sure we have the right number of initial targets.
+            if (targetSpawnTimer) {
+                clearInterval(targetSpawnTimer);
+                targetSpawnTimer = null;
+            }
+            
+            // Reset tracking state for micro adjustments
+            window.microAdjustMode = null;
+            usedPositions = [];
+            
+            // For tracking task, set up the movement timer
+            if (currentTaskType === 'tracking') {
+                window.directionChangeTimer = setInterval(() => {
+                    if (gameActive) {
+                        changeTargetDirections();
+                    }
+                }, 1000); // Change direction every second
+            }
+        }
+
+        // Create grid points for the grid task
+        function createGridPoints() {
+            gridPoints = [];
+            
+            // Define a 3x3 grid
+            const rows = 3;
+            const cols = 3;
+            const spacing = 450; // Space between grid points (1.5x larger)
+            
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    // Calculate position (centered on screen)
+                    const x = (col - 1) * spacing;
+                    const y = (row - 1) * spacing;
+                    
+                    gridPoints.push({ x, y });
+                }
+            }
+        }
+
+        // End game
+        function endGame() {
+            gameActive = false;
+            document.exitPointerLock();
+            clearInterval(gameTimer);
+            clearInterval(targetSpawnTimer);
+            
+            // Clear tracking task timer if it exists
+            if (window.directionChangeTimer) {
+                clearInterval(window.directionChangeTimer);
+                window.directionChangeTimer = null;
+            }
+            
+            // Clear any movement animations
+            if (window.movementInterval) {
+                clearInterval(window.movementInterval);
+                window.movementInterval = null;
+            }
+            
+            // Show cursor again
+            document.body.classList.remove('in-game');
+            
+            // Remove all targets
+            targets.forEach(target => {
+                if (target.element && target.element.parentNode) {
+                    target.element.parentNode.removeChild(target.element);
+                }
+            });
+            targets = [];
+            
+            // Calculate final results
+            const accuracy = calculateAccuracy();
+            
+            // Store results
+            const results = {
+                score: score,
+                accuracy: accuracy,
+                hits: hits,
+                shots: shots,
+                taskType: currentTaskType,
+                date: new Date()
+            };
+            
+            // Add to history (most recent first)
+            resultsHistory.unshift(results);
+            
+            // Show end screen
+            finalScoreElement.textContent = `Score: ${score}`;
+            finalAccuracyElement.textContent = `Accuracy: ${accuracy}%`;
+            finalTargetsElement.textContent = `Targets Hit: ${hits}`;
+            gameScreen.style.display = 'none';
+            endScreen.style.display = 'flex';
+        }
+
+        // Calculate accuracy percentage
+        function calculateAccuracy() {
+            if (shots === 0) return 0;
+            return Math.round((hits / shots) * 100);
+        }
+
+        // Request pointer lock
+        function requestPointerLock() {
+            gameContainer.requestPointerLock = gameContainer.requestPointerLock || 
+                                           gameContainer.mozRequestPointerLock ||
+                                           gameContainer.webkitRequestPointerLock;
+            gameContainer.requestPointerLock();
+        }
+
+        // Handle pointer lock change
+        function pointerLockChange() {
+            isPointerLocked = document.pointerLockElement === gameContainer ||
+                            document.mozPointerLockElement === gameContainer ||
+                            document.webkitPointerLockElement === gameContainer;
+                            
+            if (!isPointerLocked && gameActive) {
+                // Game was active but pointer lock was lost
+                // For simplicity, we'll just continue
+            }
+        }
+
+        // Handle mouse movement for FPS camera
+        function handleMouseMove(e) {
+            if (!isPointerLocked || !gameActive) return;
+            
+            // Get mouse movement
+            const movementX = e.movementX || e.mozMovementX || e.webkitMovementX || 0;
+            const movementY = e.movementY || e.mozMovementY || e.webkitMovementY || 0;
+            
+            // Update rotation angles (with proper FPS camera logic)
+            rotationY += movementX * sensitivity;
+            rotationX -= movementY * sensitivity; // Invert Y-axis for natural camera feel
+            
+            // Limit vertical rotation (looking up/down)
+            rotationX = Math.max(-90, Math.min(90, rotationX));
+            
+            // Apply rotation to the world view
+            updateViewRotation();
+        }
+
+        // Update the view rotation
+        function updateViewRotation() {
+            // Apply the inverse rotation to the world
+            world.style.transform = `rotateX(${rotationX}deg) rotateY(${rotationY}deg)`;
+        }
+
+        // Standard target spawn (random placement)
+        function spawnTarget() {
+            if (!gameActive) return;
+            
+            // Create target element
+            const targetElement = document.createElement('div');
+            targetElement.className = 'target';
+            
+            // Wall dimensions
+            const wallWidth = 4000;
+            const wallHeight = 2400;
+            const size = Math.random() * 30 + 40; // Size between 40-70px
+            
+            // Position relative to wall center
+            const padding = size * 2;
+            const maxX = wallWidth - padding*2;
+            const maxY = wallHeight - padding*2;
+            
+            let x = (Math.random() * maxX - maxX/2);
+            let y = (Math.random() * maxY - maxY/2);
+            
+            // Check if position is too close to existing targets
+            const minDistance = 100; // Minimum distance between targets
+            let positionValid = false;
+            let attempts = 0;
+            
+            while (!positionValid && attempts < 10) {
+                positionValid = true;
+                
+                // Check distance to all existing targets
+                for (const target of targets) {
+                    const distance = Math.sqrt(
+                        Math.pow(target.x - x, 2) + 
+                        Math.pow(target.y - y, 2)
+                    );
+                    
+                    if (distance < minDistance) {
+                        positionValid = false;
+                        break;
+                    }
+                }
+                
+                // If position is invalid, try a new one
+                if (!positionValid) {
+                    x = (Math.random() * maxX - maxX/2);
+                    y = (Math.random() * maxY - maxY/2);
+                    attempts++;
+                }
+            }
+            
+            // Set position and size
+            targetElement.style.width = `${size}px`;
+            targetElement.style.height = `${size}px`;
+            targetElement.style.position = 'absolute';
+            targetElement.style.left = '50%';
+            targetElement.style.top = '50%';
+            targetElement.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
+            
+            // Add to wall
+            wall.appendChild(targetElement);
+            
+            // Store target data
+            addTargetToList(targetElement, x, y, 0, size);
+            
+            // No automatic lifespan - targets remain until hit
+        }
+        
+        // Micro target spawn (targets in a small circular cluster)
+        function spawnMicroTarget() {
+            if (!gameActive) return;
+            
+            // Create smaller target element
+            const targetElement = document.createElement('div');
+            targetElement.className = 'target';
+            
+            // Small size for micro adjustment practice but not too small
+            const size = Math.random() * 10 + 25; // Size between 25-35px
+            
+            // Initialize cluster center if it doesn't exist
+            if (!window.microClusterCenter) {
+                // Create a random cluster center within view
+                // We'll offset from center by a small amount to make it more challenging
+                const offsetX = (Math.random() * 400) - 200; // -200 to 200px from center
+                const offsetY = (Math.random() * 400) - 200; // -200 to 200px from center
+                window.microClusterCenter = { x: offsetX, y: offsetY };
+                window.microTargetsSpawned = 0;
+            }
+            
+            // Move cluster center after a certain number of targets to practice different areas
+            window.microTargetsSpawned++;
+            if (window.microTargetsSpawned > 5) { // Move after 5 targets in one area
+                const offsetX = (Math.random() * 400) - 200;
+                const offsetY = (Math.random() * 400) - 200;
+                window.microClusterCenter = { x: offsetX, y: offsetY };
+                window.microTargetsSpawned = 0;
+                usedPositions = []; // Clear used positions when moving to new cluster
+            }
+            
+            // Generate a random position within a small radius from the cluster center
+            const radius = 100; // Small radius for micro-adjustments (100px)
+            const angle = Math.random() * Math.PI * 2; // Random angle in radians (0-360°)
+            const distance = Math.random() * radius; // Random distance within radius
+            
+            // Calculate position using polar coordinates
+            let x = window.microClusterCenter.x + (Math.cos(angle) * distance);
+            let y = window.microClusterCenter.y + (Math.sin(angle) * distance);
+            
+            // Check if position is too close to existing targets
+            const minDistance = 50; // Minimum distance between target centers
+            
+            // Retry up to 15 times if position is too close to existing targets
+            let attempts = 0;
+            let positionValid = false;
+            
+            while (!positionValid && attempts < 15) {
+                positionValid = true;
+                
+                // Check distance to all existing targets
+                for (const target of targets) {
+                    const distance = Math.sqrt(
+                        Math.pow(target.x - x, 2) + 
+                        Math.pow(target.y - y, 2)
+                    );
+                    
+                    if (distance < minDistance) {
+                        positionValid = false;
+                        break;
+                    }
+                }
+                
+                // Check if too close to recently used positions
+                for (const pos of usedPositions) {
+                    const distance = Math.sqrt(
+                        Math.pow(pos.x - x, 2) + 
+                        Math.pow(pos.y - y, 2)
+                    );
+                        
+                    if (distance < minDistance) {
+                        positionValid = false;
+                        break;
+                    }
+                }
+                
+                // If position is invalid, try a new angle and distance
+                if (!positionValid) {
+                    const newAngle = Math.random() * Math.PI * 2;
+                    const newDistance = Math.random() * radius;
+                    x = window.microClusterCenter.x + (Math.cos(newAngle) * newDistance);
+                    y = window.microClusterCenter.y + (Math.sin(newAngle) * newDistance);
+                    attempts++;
+                }
+            }
+            
+            // Remember this position to avoid spawning here again
+            usedPositions.push({x, y});
+            if (usedPositions.length > 10) {
+                usedPositions.shift(); // Keep only the 10 most recent positions
+            }
+            
+            // Set position and size
+            targetElement.style.width = `${size}px`;
+            targetElement.style.height = `${size}px`;
+            targetElement.style.position = 'absolute';
+            targetElement.style.left = '50%';
+            targetElement.style.top = '50%';
+            targetElement.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
+            
+            // Add to wall
+            wall.appendChild(targetElement);
+            
+            // Store target data
+            addTargetToList(targetElement, x, y, 0, size);
+        }
+        
+        // Grid target spawn (3x3 grid)
+        function spawnGridTarget() {
+            if (!gameActive || gridPoints.length === 0) return;
+            
+            // Create larger target element
+            const targetElement = document.createElement('div');
+            targetElement.className = 'target';
+            
+            // Much larger size for quick target acquisition
+            const size = Math.random() * 45 + 180; // Size between 180-225px (3x bigger)
+            
+            // Track which grid points are already occupied
+            const occupiedGridPoints = targets.map(t => {
+                return gridPoints.findIndex(gp => 
+                    Math.abs(gp.x - t.x) < 10 && Math.abs(gp.y - t.y) < 10
+                );
+            }).filter(index => index !== -1);
+            
+            // Filter available grid points
+            const availablePoints = gridPoints.filter((_, index) => 
+                !occupiedGridPoints.includes(index)
+            );
+            
+            // If all grid points are occupied, choose a random one
+            // Otherwise pick from the available points
+            let gridPoint;
+            if (availablePoints.length === 0) {
+                gridPoint = gridPoints[Math.floor(Math.random() * gridPoints.length)];
+            } else {
+                gridPoint = availablePoints[Math.floor(Math.random() * availablePoints.length)];
+            }
+            
+            const x = gridPoint.x;
+            const y = gridPoint.y;
+            
+            // Set position and size
+            targetElement.style.width = `${size}px`;
+            targetElement.style.height = `${size}px`;
+            targetElement.style.position = 'absolute';
+            targetElement.style.left = '50%';
+            targetElement.style.top = '50%';
+            targetElement.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
+            
+            // Add to wall
+            wall.appendChild(targetElement);
+            
+            // Store target data
+            addTargetToList(targetElement, x, y, 0, size);
+        }
+
+        // Functions for the tracking task
+        
+        // Spawn a moving target for tracking task
+        function spawnTrackingTarget() {
+            if (!gameActive) return;
+            
+            // Create target element
+            const targetElement = document.createElement('div');
+            targetElement.className = 'target';
+            
+            // Medium size for tracking practice
+            const size = Math.random() * 20 + 40; // Size between 40-60px
+            
+            // Define the square area where targets can move
+            if (!window.trackingArea) {
+                window.trackingArea = {
+                    // Medium sized square centered on screen (1.5x larger)
+                    width: 900,
+                    height: 900,
+                    centerX: 0,
+                    centerY: 0
+                };
+            }
+            
+            const area = window.trackingArea;
+            
+            // Random position within the tracking area
+            const x = (Math.random() * area.width) - (area.width / 2) + area.centerX;
+            const y = (Math.random() * area.height) - (area.height / 2) + area.centerY;
+            
+            // Set random initial velocity (speed and direction)
+            const speed = 2 + Math.random() * 3; // 2-5 pixels per frame
+            const angle = Math.random() * Math.PI * 2; // Random angle in radians
+            
+            // Initialize velocity
+            const vx = Math.cos(angle) * speed;
+            const vy = Math.sin(angle) * speed;
+            
+            // Set position and size
+            targetElement.style.width = `${size}px`;
+            targetElement.style.height = `${size}px`;
+            targetElement.style.position = 'absolute';
+            targetElement.style.left = '50%';
+            targetElement.style.top = '50%';
+            targetElement.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
+            
+            // Add to wall
+            wall.appendChild(targetElement);
+            
+            // Store target data with velocity information
+            const targetId = Date.now() + Math.random();
+            targetElement.dataset.id = targetId;
+            
+            const target = {
+                id: targetId,
+                element: targetElement,
+                x, y, 
+                size,
+                vx, vy, // Velocity components
+                speed, // Current speed
+                angle, // Current angle in radians
+                worldX: x,
+                worldY: y,
+                worldZ: 0
+            };
+            
+            targets.push(target);
+            return targetId;
+        }
+        
+        // Start the movement animation for tracking targets
+        function startTargetMovement() {
+            // Clear any existing movement interval
+            if (window.movementInterval) {
+                clearInterval(window.movementInterval);
+            }
+            
+            // Create a new interval for moving targets
+            window.movementInterval = setInterval(() => {
+                if (!gameActive) return;
+                
+                // Move each target
+                targets.forEach(target => {
+                    if (!target.vx || !target.vy) return; // Skip if not a moving target
+                    
+                    // Update position based on velocity
+                    target.x += target.vx;
+                    target.y += target.vy;
+                    
+                    // Check if hitting boundaries of tracking area
+                    const area = window.trackingArea;
+                    const halfWidth = area.width / 2;
+                    const halfHeight = area.height / 2;
+                    
+                    // Bounce off boundaries
+                    if (target.x < -halfWidth + area.centerX) {
+                        target.x = -halfWidth + area.centerX;
+                        target.vx = -target.vx;
+                    }
+                    if (target.x > halfWidth + area.centerX) {
+                        target.x = halfWidth + area.centerX;
+                        target.vx = -target.vx;
+                    }
+                    if (target.y < -halfHeight + area.centerY) {
+                        target.y = -halfHeight + area.centerY;
+                        target.vy = -target.vy;
+                    }
+                    if (target.y > halfHeight + area.centerY) {
+                        target.y = halfHeight + area.centerY;
+                        target.vy = -target.vy;
+                    }
+                    
+                    // Update target position in DOM
+                    if (target.element) {
+                        target.element.style.transform = `translate(-50%, -50%) translate(${target.x}px, ${target.y}px)`;
+                    }
+                });
+            }, 16); // ~60fps
+        }
+        
+        // Change directions of tracking targets
+        function changeTargetDirections() {
+            targets.forEach(target => {
+                if (!target.vx || !target.vy) return; // Skip if not a moving target
+                
+                // Change direction with a smooth arc - deflect by 30-150 degrees
+                const deflectionAngle = (Math.random() * 120 + 30) * (Math.PI / 180);
+                const currentAngle = Math.atan2(target.vy, target.vx);
+                
+                // Random new angle (+/- deflection)
+                const newAngle = currentAngle + (Math.random() > 0.5 ? deflectionAngle : -deflectionAngle);
+                
+                // Keep existing speed but change direction
+                const speed = Math.sqrt(target.vx * target.vx + target.vy * target.vy);
+                
+                // Update velocity components
+                target.vx = Math.cos(newAngle) * speed;
+                target.vy = Math.sin(newAngle) * speed;
+                
+                // Update stored angle and speed
+                target.angle = newAngle;
+                target.speed = speed;
+            });
+        }
+        
+        // Add target to tracking list
+        function addTargetToList(targetElement, x, y, z, size) {
+            const targetId = Date.now() + Math.random();
+            targetElement.dataset.id = targetId;
+            
+            const target = {
+                id: targetId,
+                element: targetElement,
+                x, y, z, size,
+                worldX: x,
+                worldY: y,
+                worldZ: z
+            };
+            
+            targets.push(target);
+            return targetId;
+        }
+
+        // Handle shot (click)
+        function handleShot(event) {
+            if (!gameActive || !isPointerLocked) {
+                if (!isPointerLocked && gameActive) {
+                    requestPointerLock();
+                }
+                return;
+            }
+            
+            shots++;
+            
+            // Ray from center of screen
+            const ray = {
+                x: window.innerWidth / 2,
+                y: window.innerHeight / 2
+            };
+            
+            // Check if any target is hit
+            const targetElements = document.querySelectorAll('.target');
+            let hit = false;
+            
+            targetElements.forEach(targetElement => {
+                // Get target's position on screen
+                const rect = targetElement.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                
+                // Distance from crosshair to target center
+                const distance = Math.sqrt(
+                    Math.pow(ray.x - centerX, 2) + 
+                    Math.pow(ray.y - centerY, 2)
+                );
+                
+                // Hit detection radius varies by task
+                let hitRadius = rect.width * 0.4; // Standard hit radius
+                
+                if (currentTaskType === 'micro') {
+                    hitRadius = rect.width * 0.3; // Smaller hit area for micro mode
+                } else if (currentTaskType === 'grid') {
+                    hitRadius = rect.width * 0.5; // Larger hit area for grid mode
+                } else if (currentTaskType === 'tracking') {
+                    hitRadius = rect.width * 0.4; // Medium hit area for tracking mode
+                }
+                
+                if (distance < hitRadius) {
+                    // Hit a target!
+                    hit = true;
+                    hits++;
+                    
+                    // Score varies by task type and target size
+                    let pointValue = 100; // Base score for standard
+                    
+                    if (currentTaskType === 'micro') {
+                        // More points for smaller targets
+                        pointValue = 150;
+                    } else if (currentTaskType === 'grid') {
+                        // Fewer points for larger grid targets
+                        pointValue = 75;
+                    } else if (currentTaskType === 'tracking') {
+                        // More points for hitting moving targets
+                        pointValue = 200;
+                    }
+                    
+                    score += pointValue;
+                    
+                    // Remove the target
+                    const targetId = targetElement.dataset.id;
+                    targets = targets.filter(t => t.id !== targetId);
+                    targetElement.parentNode.removeChild(targetElement);
+                    
+                    // Create hit effect at center of screen
+                    createHitEffect(ray.x, ray.y);
+                    
+                    // Update score
+                    scoreElement.textContent = `Score: ${score}`;
+                    
+                    // Spawn a replacement based on task type
+                    setTimeout(() => {
+                        if (gameActive) {
+                            switch(currentTaskType) {
+                                case 'standard': spawnTarget(); break;
+                                case 'micro': spawnMicroTarget(); break;
+                                case 'grid': spawnGridTarget(); break;
+                                case 'tracking': spawnTrackingTarget(); break;
+                            }
+                        }
+                    }, 300);
+                }
+            });
+            
+            // Update accuracy
+            accuracyElement.textContent = `Accuracy: ${calculateAccuracy()}%`;
+        }
+
+        // Create hit effect
+        function createHitEffect(x, y) {
+            const hitEffect = document.createElement('div');
+            hitEffect.className = 'hit-effect';
+            hitEffect.style.left = `${x - 20}px`;
+            hitEffect.style.top = `${y - 20}px`;
+            
+            gameContainer.appendChild(hitEffect);
+            
+            // Remove after animation
+            setTimeout(() => {
+                if (hitEffect.parentNode) {
+                    hitEffect.parentNode.removeChild(hitEffect);
+                }
+            }, 300);
+        }
+
+        // Add a center marker indicator to ensure proper alignment (invisible)
+        function addCenterMarker() {
+            const centerMarker = document.createElement('div');
+            centerMarker.style.position = 'absolute';
+            centerMarker.style.width = '10px';
+            centerMarker.style.height = '10px';
+            centerMarker.style.borderRadius = '50%';
+            centerMarker.style.backgroundColor = 'rgba(0, 255, 0, 0)'; // Completely transparent
+            centerMarker.style.left = '50%';
+            centerMarker.style.top = '50%';
+            centerMarker.style.transform = 'translate(-50%, -50%) translateZ(-3500px)';
+            centerMarker.style.zIndex = '1';
+            wall.appendChild(centerMarker);
+        }
+
+        // Initialize the game
+        init();
+    </script>
+</body>
+</html>
